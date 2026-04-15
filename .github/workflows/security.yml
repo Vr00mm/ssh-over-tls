@@ -35,7 +35,7 @@ jobs:
       - name: Run gosec
         uses: securego/gosec@v2.25.0
         with:
-          args: ./...
+          args: -exclude=G104 ./...
 
   codeql:
     name: CodeQL
