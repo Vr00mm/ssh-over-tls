@@ -86,7 +86,7 @@ func Load() (Spec, error) {
 // Blank lines and lines starting with '#' are ignored.
 // Returns an empty map if the file does not exist.
 func loadFile(path string) (map[string]string, error) {
-	f, err := os.Open(path) //nolint:gosec // G304: path is the operator-supplied config file location, not user input
+	f, err := os.Open(path) // #nosec G304 G703 -- path is the operator-supplied config file location, not user input
 	if os.IsNotExist(err) {
 		return map[string]string{}, nil
 	}
