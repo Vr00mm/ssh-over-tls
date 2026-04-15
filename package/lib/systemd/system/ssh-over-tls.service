@@ -1,0 +1,18 @@
+[Unit]
+Description=TLS multiplexer that routes SSH and HTTP to separate backends
+After=network.target
+Documentation=https://github.com/Vr00mm/ssh-over-tls
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/ssh-over-tls/config
+ExecStart=/usr/bin/ssh-over-tls
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

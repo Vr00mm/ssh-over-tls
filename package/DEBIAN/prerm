@@ -1,0 +1,5 @@
+#!/bin/sh
+set -e
+
+systemctl stop ssh-over-tls || true
+systemctl disable ssh-over-tls || true

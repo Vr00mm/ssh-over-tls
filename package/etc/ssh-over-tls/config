@@ -1,0 +1,18 @@
+# ssh-over-tls configuration
+# Each line is KEY=VALUE. Blank lines and lines starting with # are ignored.
+# Environment variables override values set here.
+
+# Address of the SSH backend (required)
+#SSH_SERVER_ADDR=localhost:22
+
+# Address of the HTTP backend (required)
+#HTTP_SERVER_ADDR=localhost:80
+
+# Port to listen on (required)
+#LISTEN_PORT=443
+
+# Path to the TLS certificate file (default: cert.pem)
+#TLS_CERT_FILE=/etc/ssl/certs/ssh-over-tls.pem
+
+# Path to the TLS private key file (default: key.pem)
+#TLS_KEY_FILE=/etc/ssl/private/ssh-over-tls.key

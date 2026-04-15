@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        include:
+          - goarch: amd64
+            dpkg_arch: amd64
+          - goarch: arm64
+            dpkg_arch: arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Build binary
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=${{ matrix.goarch }} \
+            go build -ldflags="-s -w" -o package/usr/bin/ssh-over-tls ./cmd/ssh-over-tls
+
+      - name: Stamp version and architecture into control file
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          sed -i "s/^Version:.*/Version: $VERSION/" package/DEBIAN/control
+          sed -i "s/^Architecture:.*/Architecture: ${{ matrix.dpkg_arch }}/" package/DEBIAN/control
+          chmod 755 package/DEBIAN/postinst package/DEBIAN/prerm
+
+      - name: Build .deb package
+        id: build
+        run: |
+          dpkg-deb --build --root-owner-group package /tmp/
+          DEB_FILE=$(ls /tmp/*.deb | head -1)
+          echo "deb-path=$DEB_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Publish .deb to APT repository
+        uses: Vr00mm/deb-publish@v1
+        with:
+          deb-path: ${{ steps.build.outputs.deb-path }}
+          token: ${{ secrets.PAGES_TOKEN }}
+          pages-repo: Vr00mm/vr00mm.github.io
+          pages-url: https://vr00mm.github.io
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: ${{ secrets.GPG_PASSPHRASE }}
+
+  github-release:
+    name: GitHub Release
+    runs-on: ubuntu-latest
+    needs: release
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
