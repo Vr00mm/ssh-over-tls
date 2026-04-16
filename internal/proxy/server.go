@@ -247,7 +247,7 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 	go func() {
 		defer copyBufPool.Put(buf1)
 
-		io.CopyBuffer(target, conn, *buf1) //nolint:errcheck // #nosec G104 -- best-effort pipe, error on one side causes the other to close
+		_, _ = io.CopyBuffer(target, conn, *buf1) // #nosec G104 -- best-effort pipe, error on one side causes the other to close
 
 		done <- struct{}{}
 	}()
@@ -255,7 +255,7 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 	go func() {
 		defer copyBufPool.Put(buf2)
 
-		io.CopyBuffer(conn, target, *buf2) //nolint:errcheck // #nosec G104 -- best-effort pipe, error on one side causes the other to close
+		_, _ = io.CopyBuffer(conn, target, *buf2) // #nosec G104 -- best-effort pipe, error on one side causes the other to close
 
 		done <- struct{}{}
 	}()
