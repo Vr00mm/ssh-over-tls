@@ -17,6 +17,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/Vr00mm/ssh-over-tls/internal/protocol"
 )
 
 // generateTestCert writes a self-signed ECDSA P-256 certificate and private key
@@ -195,13 +197,13 @@ func TestDetectProtocol(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, ok := detectProtocol(tt.header)
+			got, ok := protocol.Detect([]byte(tt.header))
 			if ok != tt.wantOK {
-				t.Errorf("detectProtocol(%q) ok = %v, want %v", tt.header, ok, tt.wantOK)
+				t.Errorf("protocol.Detect(%q) ok = %v, want %v", tt.header, ok, tt.wantOK)
 			}
 
 			if got != tt.wantProtocol {
-				t.Errorf("detectProtocol(%q) protocol = %q, want %q", tt.header, got, tt.wantProtocol)
+				t.Errorf("protocol.Detect(%q) protocol = %q, want %q", tt.header, got, tt.wantProtocol)
 			}
 		})
 	}
