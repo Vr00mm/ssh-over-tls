@@ -16,7 +16,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	s, err := proxy.New(cfg.SSHAddr, cfg.HTTPAddr, cfg.Port, cfg.CertFile, cfg.KeyFile)
+	// Build proxy options from configuration
+	opts := []proxy.Option{
+		proxy.WithTLSMinVersion(cfg.TLSMinVersion),
+	}
+
+	if len(cfg.TLSCipherSuites) > 0 {
+		opts = append(opts, proxy.WithTLSCipherSuites(cfg.TLSCipherSuites))
+	}
+
+	s, err := proxy.New(cfg.SSHAddr, cfg.HTTPAddr, cfg.Port, cfg.CertFile, cfg.KeyFile, opts...)
 	if err != nil {
 		slog.Error("create proxy", "err", err)
 		os.Exit(1)

@@ -16,3 +16,12 @@
 
 # Path to the TLS private key file (default: key.pem)
 #TLS_KEY_FILE=/etc/ssl/private/ssh-over-tls.key
+
+# Minimum TLS version (default: TLS12)
+# Supported: TLS10, TLS11, TLS12, TLS13
+#TLS_MIN_VERSION=TLS12
+
+# Allowed cipher suites (comma-separated, optional)
+# Leave commented to use secure defaults
+# Example: TLS_ECDHE_RSA_WITH_AES_128_GCM,TLS_ECDHE_RSA_WITH_AES_256_GCM
+#TLS_CIPHER_SUITES=
