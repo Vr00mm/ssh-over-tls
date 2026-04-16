@@ -51,6 +51,8 @@ All configuration is via environment variables.
 | `LISTEN_PORT` | Yes | — | Port to listen on (e.g. `443`) |
 | `TLS_CERT_FILE` | No | `cert.pem` | Path to the TLS certificate file |
 | `TLS_KEY_FILE` | No | `key.pem` | Path to the TLS private key file |
+| `TLS_MIN_VERSION` | No | `TLS12` | Minimum TLS version (`TLS10`, `TLS11`, `TLS12`, `TLS13`) |
+| `TLS_CIPHER_SUITES` | No | _(secure defaults)_ | Comma-separated list of allowed cipher suites |
 
 ### Example
 
@@ -63,6 +65,67 @@ export TLS_KEY_FILE=/etc/ssl/key.pem
 
 ssh-over-tls
 ```
+
+### TLS Security Configuration
+
+By default, `ssh-over-tls` uses TLS 1.2+ with a secure set of modern cipher suites. You can customize this behavior for specific security requirements.
+
+#### Setting Minimum TLS Version
+
+Reject older TLS versions to reduce exposure to protocol vulnerabilities:
+
+```bash
+# Only accept TLS 1.3 (most secure, may reject some older clients)
+export TLS_MIN_VERSION=TLS13
+
+# Accept TLS 1.2 and above (default, good compatibility)
+export TLS_MIN_VERSION=TLS12
+```
+
+**Supported values:** `TLS10`, `TLS11`, `TLS12`, `TLS13`
+
+**Note:** Setting `TLS_MIN_VERSION=TLS13` will reduce scanner noise in logs by rejecting connections from bots using outdated TLS versions.
+
+#### Configuring Cipher Suites
+
+Limit allowed cipher suites for compliance or hardening:
+
+```bash
+# High security: only strongest ciphers
+export TLS_CIPHER_SUITES="TLS_ECDHE_RSA_WITH_AES_256_GCM,TLS_ECDHE_ECDSA_WITH_AES_256_GCM,TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305"
+
+# Maximum compatibility: include CBC mode ciphers
+export TLS_CIPHER_SUITES="TLS_ECDHE_RSA_WITH_AES_128_GCM,TLS_ECDHE_RSA_WITH_AES_256_GCM,TLS_ECDHE_RSA_WITH_AES_128_CBC"
+```
+
+**Common cipher suite names:**
+- `TLS_ECDHE_RSA_WITH_AES_128_GCM` or `TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256`
+- `TLS_ECDHE_RSA_WITH_AES_256_GCM` or `TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384`
+- `TLS_ECDHE_ECDSA_WITH_AES_128_GCM` or `TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256`
+- `TLS_ECDHE_ECDSA_WITH_AES_256_GCM` or `TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384`
+- `TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305` or `TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256`
+- `TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305` or `TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256`
+
+If not specified, secure defaults are used (all modern ECDHE-based cipher suites).
+
+#### Configuration File
+
+Alternatively, use a configuration file at `/etc/ssh-over-tls/config`:
+
+```bash
+# /etc/ssh-over-tls/config
+SSH_SERVER_ADDR=localhost:22
+HTTP_SERVER_ADDR=localhost:8080
+LISTEN_PORT=443
+TLS_CERT_FILE=/etc/ssl/certs/ssh-over-tls.pem
+TLS_KEY_FILE=/etc/ssl/private/ssh-over-tls.key
+
+# Security settings
+TLS_MIN_VERSION=TLS12
+TLS_CIPHER_SUITES=TLS_ECDHE_RSA_WITH_AES_256_GCM,TLS_ECDHE_ECDSA_WITH_AES_256_GCM
+```
+
+Environment variables always override configuration file values.
 
 ## Connecting via SSH
 
@@ -121,6 +184,40 @@ Host myserver
 4. Bidirectional proxying runs until either side closes the connection.
 
 Both backends receive the original unencrypted traffic — TLS is terminated at the proxy.
+
+## Development
+
+### Project Structure
+
+The codebase follows idiomatic Go organization with focused, modular packages:
+
+```
+internal/
+├── config/          # Configuration loading (file.go, spec.go, tls.go)
+├── handler/         # Connection handling (handler.go, copy.go, errors.go)
+├── protocol/        # Protocol detection (SSH/HTTP)
+├── proxy/           # TLS server and options
+└── tlsutil/         # TLS helper utilities (version/cipher names)
+```
+
+**Code standards:**
+- All files under 200 lines
+- All functions under 50 lines
+- Early returns instead of nested if statements
+- Zero golangci-lint issues
+
+### Building
+
+```bash
+go build ./cmd/ssh-over-tls
+```
+
+### Testing
+
+```bash
+go test ./...
+golangci-lint run
+```
 
 ## Contributing
 

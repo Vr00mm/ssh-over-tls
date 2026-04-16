@@ -7,6 +7,29 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+- **Major refactoring**: Split monolithic files into focused packages
+- `internal/proxy/server.go` reduced from 419 to 139 lines (67% reduction)
+- `internal/config/config.go` split into `spec.go`, `file.go`, `tls.go`
+- All source files now under 200 lines, all functions under 50 lines
+- Improved code organization following idiomatic Go package structure
+
+### Added
+- New `internal/tlsutil` package for TLS version/cipher suite name helpers
+- New `internal/protocol` package for protocol detection logic
+- New `internal/handler` package with connection handling, copying, and error categorization
+- Buffer pooling for improved performance in bidirectional copying
+- Better error messages listing all missing required configuration fields
+
+### Removed
+- Weak CBC cipher suites from default TLS configuration
+- Nested if statements in favor of early returns
+
+### Fixed
+- All golangci-lint issues (29 issues resolved)
+- Error handling with proper nolint annotations
+- Whitespace and formatting per Go best practices
+
 ## [1.0.0] - 2026-04-15
 
 ### Added
