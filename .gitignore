@@ -1,6 +1,7 @@
 # Binaries
 bin/
 dist/
+ssh-over-tls
 *.exe
 *.exe~
 *.dll
