@@ -1,5 +1,5 @@
 Package: ssh-over-tls
-Version: 0.1.0
+Version: 1.0.0-14-g214af6d-dirty
 Architecture: amd64
 Maintainer: Rémi ZIOLKOWSKI <remi.ziolkowski@gmail.com>
 Description: TLS multiplexer that routes SSH and HTTP to separate backends on a single port.

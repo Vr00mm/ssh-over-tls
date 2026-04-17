@@ -14,5 +14,11 @@ ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
 
+# Graceful shutdown configuration
+# Allow 35 seconds for graceful shutdown (30s app timeout + 5s buffer)
+TimeoutStopSec=35s
+KillMode=mixed
+KillSignal=SIGTERM
+
 [Install]
 WantedBy=multi-user.target

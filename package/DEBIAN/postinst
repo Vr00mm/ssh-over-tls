@@ -3,3 +3,13 @@ set -e
 
 systemctl daemon-reload
 systemctl enable ssh-over-tls
+
+# Restart service to apply updates
+# systemd will wait for old process to finish gracefully (up to TimeoutStopSec)
+if systemctl is-active --quiet ssh-over-tls; then
+    systemctl restart ssh-over-tls
+else
+    systemctl start ssh-over-tls
+fi
+
+exit 0

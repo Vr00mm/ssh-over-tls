@@ -1,5 +1,11 @@
 #!/bin/sh
 set -e
 
-systemctl stop ssh-over-tls || true
-systemctl disable ssh-over-tls || true
+# Only stop the service on complete removal, not on upgrade
+if [ "$1" = "remove" ]; then
+    systemctl stop ssh-over-tls || true
+    systemctl disable ssh-over-tls || true
+fi
+
+# On upgrade, systemd will handle the service restart seamlessly
+exit 0
