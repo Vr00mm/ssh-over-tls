@@ -13,19 +13,57 @@ const (
 
 // Detect identifies the protocol from the first bytes of a connection.
 // Returns the protocol name (SSH or HTTP) and whether it was recognized.
-// All protocols are matched on their first 4 characters, which uniquely identify
-// SSH and all supported HTTP verbs.
+// SSH is matched on "SSH-" prefix, HTTP methods are matched on complete words.
 func Detect(header []byte) (string, bool) {
 	if len(header) < 4 {
 		return "", false
 	}
 
-	prefix := string(header[:4])
-	switch prefix {
-	case "SSH-":
+	// Check for SSH protocol identifier.
+	if len(header) >= 4 && string(header[:4]) == "SSH-" {
 		return SSH, true
-	case "GET ", "POST", "HEAD", "PUT ", "DELE", "OPTI", "CONN", "PATC", "TRAC":
-		return HTTP, true
+	}
+
+	// Check for HTTP methods (require full match with space or newline).
+	// We match more precisely to avoid false positives.
+	headerStr := string(header)
+	if len(headerStr) >= 4 {
+		prefix4 := headerStr[:4]
+		switch prefix4 {
+		case "GET ", "PUT ", "HEAD":
+			return HTTP, true
+		}
+	}
+
+	if len(headerStr) >= 5 {
+		prefix5 := headerStr[:5]
+		switch prefix5 {
+		case "POST ", "PATCH":
+			return HTTP, true
+		}
+	}
+
+	if len(headerStr) >= 6 {
+		prefix6 := headerStr[:6]
+		switch prefix6 {
+		case "DELETE", "TRACE ":
+			return HTTP, true
+		}
+	}
+
+	if len(headerStr) >= 7 {
+		prefix7 := headerStr[:7]
+		switch prefix7 {
+		case "OPTIONS", "CONNECT":
+			return HTTP, true
+		}
+	}
+
+	if len(headerStr) >= 8 {
+		prefix8 := headerStr[:8]
+		if prefix8 == "OPTIONS " || prefix8 == "CONNECT " {
+			return HTTP, true
+		}
 	}
 
 	return "", false
