@@ -53,6 +53,7 @@ All configuration is via environment variables.
 | `TLS_KEY_FILE` | No | `key.pem` | Path to the TLS private key file |
 | `TLS_MIN_VERSION` | No | `TLS12` | Minimum TLS version (`TLS10`, `TLS11`, `TLS12`, `TLS13`) |
 | `TLS_CIPHER_SUITES` | No | _(secure defaults)_ | Comma-separated list of allowed cipher suites |
+| `COPY_IDLE_TIMEOUT` | No | `5m` | Maximum idle time for connections (e.g. `30s`, `5m`, `1h`) |
 
 ### Example
 
