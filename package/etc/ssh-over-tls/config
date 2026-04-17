@@ -25,3 +25,7 @@
 # Leave commented to use secure defaults
 # Example: TLS_ECDHE_RSA_WITH_AES_128_GCM,TLS_ECDHE_RSA_WITH_AES_256_GCM
 #TLS_CIPHER_SUITES=
+
+# Send PROXY protocol v1 header to HTTP backend to preserve client IP (default: false)
+# Enable only if your HTTP backend (e.g. nginx) is configured with proxy_protocol on
+#PROXY_PROTOCOL_ENABLED=false

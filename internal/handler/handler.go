@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"strconv"
 	"time"
 
 	"github.com/Vr00mm/ssh-over-tls/internal/protocol"
@@ -14,10 +15,12 @@ import (
 
 // Config holds configuration for connection handling.
 type Config struct {
-	SSHAddr          string
-	HTTPAddr         string
-	DialTimeout      time.Duration
-	HandshakeTimeout time.Duration
+	SSHAddr              string
+	HTTPAddr             string
+	DialTimeout          time.Duration
+	HandshakeTimeout     time.Duration
+	CopyIdleTimeout      time.Duration
+	ProxyProtocolEnabled bool
 }
 
 // Handler handles incoming TLS connections.
@@ -82,7 +85,7 @@ func (h *Handler) performHandshake(ctx context.Context, conn *tls.Conn, logger *
 	if err := conn.Handshake(); err != nil {
 		logLevel := categorizeError(err)
 		logger.Log(ctx, logLevel, "TLS handshake",
-			"err", err,
+			"err", BeautifyTLSError(err),
 			"duration_ms", time.Since(start).Milliseconds())
 
 		return err
@@ -143,7 +146,14 @@ func (h *Handler) handleProtocol(ctx context.Context, conn net.Conn, proto strin
 
 	defer backend.Close() //nolint:errcheck // connection close in defer: error is not actionable
 
-	_ = BidirectionalCopy(conn, backend, header)
+	// Send PROXY protocol header for HTTP backends to preserve client IP
+	if proto == protocol.HTTP && h.cfg.ProxyProtocolEnabled {
+		if err := h.sendProxyHeader(conn, backend, logger); err != nil {
+			return
+		}
+	}
+
+	_ = BidirectionalCopy(conn, backend, header, h.cfg.CopyIdleTimeout)
 }
 
 // selectBackend returns the backend address for a given protocol.
@@ -179,4 +189,46 @@ func (h *Handler) logConnectionClose(logger *slog.Logger, proto string, state tl
 		"tls_version", tlsutil.VersionName(state.Version),
 		"cipher_suite", tlsutil.CipherSuiteName(state.CipherSuite),
 		"duration_ms", time.Since(start).Milliseconds())
+}
+
+// sendProxyHeader sends a PROXY protocol v1 header to preserve client IP.
+// Format: PROXY TCP4 <client-ip> <server-ip> <client-port> <server-port>\r\n
+// See: https://www.haproxy.org/download/1.8/doc/proxy-protocol.txt
+func (h *Handler) sendProxyHeader(clientConn, backendConn net.Conn, logger *slog.Logger) error {
+	clientAddr, ok := clientConn.RemoteAddr().(*net.TCPAddr)
+	if !ok {
+		logger.Warn("client address is not TCP, skipping PROXY header")
+		return nil
+	}
+
+	serverAddr, ok := clientConn.LocalAddr().(*net.TCPAddr)
+	if !ok {
+		logger.Warn("server address is not TCP, skipping PROXY header")
+		return nil
+	}
+
+	// Determine protocol family (TCP4 or TCP6)
+	family := "TCP4"
+	if clientAddr.IP.To4() == nil {
+		family = "TCP6"
+	}
+
+	// Build PROXY protocol v1 header
+	// Format: PROXY TCP4 255.255.255.255 255.255.255.255 65535 65535\r\n
+	proxyHeader := "PROXY " + family + " " +
+		clientAddr.IP.String() + " " +
+		serverAddr.IP.String() + " " +
+		strconv.Itoa(clientAddr.Port) + " " +
+		strconv.Itoa(serverAddr.Port) + "\r\n"
+
+	if _, err := backendConn.Write([]byte(proxyHeader)); err != nil {
+		logger.Error("failed to send PROXY header", "err", err)
+		return err
+	}
+
+	logger.Debug("sent PROXY header",
+		"client_ip", clientAddr.IP.String(),
+		"client_port", clientAddr.Port)
+
+	return nil
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 )
 
 const defaultConfigFile = "/etc/ssh-over-tls/config"
@@ -15,15 +16,18 @@ const defaultConfigFile = "/etc/ssh-over-tls/config"
 // Required: SSH_SERVER_ADDR, HTTP_SERVER_ADDR, LISTEN_PORT.
 // Optional: TLS_CERT_FILE (default: cert.pem), TLS_KEY_FILE (default: key.pem),
 //
-//	TLS_MIN_VERSION (default: TLS12), TLS_CIPHER_SUITES (default: secure modern ciphers).
+//	TLS_MIN_VERSION (default: TLS12), TLS_CIPHER_SUITES (default: secure modern ciphers),
+//	COPY_IDLE_TIMEOUT (default: 5m), PROXY_PROTOCOL_ENABLED (default: false).
 type Spec struct {
-	SSHAddr         string
-	HTTPAddr        string
-	Port            string
-	CertFile        string
-	KeyFile         string
-	TLSMinVersion   uint16
-	TLSCipherSuites []uint16
+	SSHAddr              string
+	HTTPAddr             string
+	Port                 string
+	CertFile             string
+	KeyFile              string
+	TLSMinVersion        uint16
+	TLSCipherSuites      []uint16
+	CopyIdleTimeout      time.Duration
+	ProxyProtocolEnabled bool
 }
 
 // Load reads configuration from a file then overlays environment variables.
@@ -61,11 +65,12 @@ func buildSpec(fileVars map[string]string) (Spec, error) {
 	}
 
 	spec := Spec{
-		SSHAddr:  lookup("SSH_SERVER_ADDR", ""),
-		HTTPAddr: lookup("HTTP_SERVER_ADDR", ""),
-		Port:     lookup("LISTEN_PORT", ""),
-		CertFile: lookup("TLS_CERT_FILE", "cert.pem"),
-		KeyFile:  lookup("TLS_KEY_FILE", "key.pem"),
+		SSHAddr:              lookup("SSH_SERVER_ADDR", ""),
+		HTTPAddr:             lookup("HTTP_SERVER_ADDR", ""),
+		Port:                 lookup("LISTEN_PORT", ""),
+		CertFile:             lookup("TLS_CERT_FILE", "cert.pem"),
+		KeyFile:              lookup("TLS_KEY_FILE", "key.pem"),
+		ProxyProtocolEnabled: lookup("PROXY_PROTOCOL_ENABLED", "false") == "true",
 	}
 
 	if err := validateRequiredFields(spec); err != nil {
@@ -73,6 +78,10 @@ func buildSpec(fileVars map[string]string) (Spec, error) {
 	}
 
 	if err := parseTLSConfig(&spec, lookup); err != nil {
+		return Spec{}, err
+	}
+
+	if err := parseTimeouts(&spec, lookup); err != nil {
 		return Spec{}, err
 	}
 
@@ -118,6 +127,22 @@ func parseTLSConfig(spec *Spec, lookup func(string, string) string) error {
 		}
 
 		spec.TLSCipherSuites = suites
+	}
+
+	return nil
+}
+
+// parseTimeouts parses timeout-related configuration.
+func parseTimeouts(spec *Spec, lookup func(string, string) string) error {
+	copyIdleTimeoutStr := lookup("COPY_IDLE_TIMEOUT", "5m")
+	if copyIdleTimeoutStr != "" {
+		d, err := time.ParseDuration(copyIdleTimeoutStr)
+		if err != nil {
+			return fmt.Errorf("parse COPY_IDLE_TIMEOUT: %w (expected format: 1s, 5m, 1h)", err)
+		}
+		spec.CopyIdleTimeout = d
+	} else {
+		spec.CopyIdleTimeout = 5 * time.Minute
 	}
 
 	return nil

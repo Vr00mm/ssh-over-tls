@@ -22,17 +22,23 @@ import (
 const (
 	defaultDialTimeout      = 10 * time.Second
 	defaultHandshakeTimeout = 10 * time.Second
+	defaultCopyIdleTimeout  = 5 * time.Minute
+	// defaultShutdownTimeout is how long to wait for active connections to finish
+	// before forcefully closing them during graceful shutdown.
+	defaultShutdownTimeout = 30 * time.Second
 )
 
 // Server is a TLS multiplexer that routes SSH and HTTP connections to separate backends.
 type Server struct {
-	sshAddr          string
-	httpAddr         string
-	port             string
-	tlsConfig        *tls.Config
-	dialTimeout      time.Duration
-	handshakeTimeout time.Duration
-	handler          *handler.Handler
+	sshAddr              string
+	httpAddr             string
+	port                 string
+	tlsConfig            *tls.Config
+	dialTimeout          time.Duration
+	handshakeTimeout     time.Duration
+	copyIdleTimeout      time.Duration
+	proxyProtocolEnabled bool
+	handler              *handler.Handler
 }
 
 // New creates a Server that listens on port and forwards SSH traffic to sshAddr
@@ -49,6 +55,7 @@ func New(sshAddr, httpAddr, port, certFile, keyFile string, opts ...Option) (*Se
 		port:             port,
 		dialTimeout:      defaultDialTimeout,
 		handshakeTimeout: defaultHandshakeTimeout,
+		copyIdleTimeout:  defaultCopyIdleTimeout,
 		tlsConfig:        defaultTLSConfig(cert),
 	}
 
@@ -57,10 +64,12 @@ func New(sshAddr, httpAddr, port, certFile, keyFile string, opts ...Option) (*Se
 	}
 
 	s.handler = handler.New(handler.Config{
-		SSHAddr:          sshAddr,
-		HTTPAddr:         httpAddr,
-		DialTimeout:      s.dialTimeout,
-		HandshakeTimeout: s.handshakeTimeout,
+		SSHAddr:              sshAddr,
+		HTTPAddr:             httpAddr,
+		DialTimeout:          s.dialTimeout,
+		HandshakeTimeout:     s.handshakeTimeout,
+		CopyIdleTimeout:      s.copyIdleTimeout,
+		ProxyProtocolEnabled: s.proxyProtocolEnabled,
 	})
 
 	return s, nil
@@ -97,13 +106,15 @@ func (s *Server) Run() error {
 }
 
 // serve accepts connections from listener until ctx is cancelled,
-// then waits for all active connections to finish.
+// then waits for all active connections to finish (with timeout).
 func (s *Server) serve(ctx context.Context, listener net.Listener) error {
 	go s.shutdownOnSignal(ctx, listener)
 
 	slog.Info("listening", "port", s.port)
 
 	var wg sync.WaitGroup
+	activeConns := make(map[net.Conn]struct{})
+	var mu sync.Mutex
 
 	for {
 		conn, err := listener.Accept()
@@ -117,13 +128,50 @@ func (s *Server) serve(ctx context.Context, listener net.Listener) error {
 			continue
 		}
 
-		wg.Go(func() {
-			s.handler.Handle(ctx, conn)
-		})
+		// Track active connection
+		mu.Lock()
+		activeConns[conn] = struct{}{}
+		mu.Unlock()
+
+		wg.Add(1)
+		go func(c net.Conn) {
+			defer wg.Done()
+			defer func() {
+				mu.Lock()
+				delete(activeConns, c)
+				mu.Unlock()
+			}()
+
+			s.handler.Handle(ctx, c)
+		}(conn)
 	}
 
-	slog.Info("waiting for active connections to finish")
-	wg.Wait()
+	// Graceful shutdown: wait for connections with timeout
+	slog.Info("waiting for active connections to finish", "timeout", defaultShutdownTimeout)
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		slog.Info("all connections closed gracefully")
+	case <-time.After(defaultShutdownTimeout):
+		slog.Warn("shutdown timeout reached, forcing connection closure",
+			"remaining_connections", len(activeConns))
+
+		// Force close remaining connections
+		mu.Lock()
+		for conn := range activeConns {
+			_ = conn.Close()
+		}
+		mu.Unlock()
+
+		// Wait a bit more for goroutines to exit after forced close
+		<-done
+	}
 
 	return nil //nolint:nilerr // accept error triggers the break; returning nil signals clean shutdown
 }

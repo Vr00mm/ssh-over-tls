@@ -21,6 +21,13 @@ func WithHandshakeTimeout(d time.Duration) Option {
 	}
 }
 
+// WithCopyIdleTimeout sets the maximum idle time for data transfer (default 5m).
+func WithCopyIdleTimeout(d time.Duration) Option {
+	return func(s *Server) {
+		s.copyIdleTimeout = d
+	}
+}
+
 // WithTLSMinVersion sets the minimum TLS version to accept.
 func WithTLSMinVersion(version uint16) Option {
 	return func(s *Server) {
@@ -36,5 +43,12 @@ func WithTLSCipherSuites(ciphers []uint16) Option {
 		if s.tlsConfig != nil && len(ciphers) > 0 {
 			s.tlsConfig.CipherSuites = ciphers
 		}
+	}
+}
+
+// WithProxyProtocol enables or disables sending PROXY protocol v1 headers to HTTP backends.
+func WithProxyProtocol(enabled bool) Option {
+	return func(s *Server) {
+		s.proxyProtocolEnabled = enabled
 	}
 }

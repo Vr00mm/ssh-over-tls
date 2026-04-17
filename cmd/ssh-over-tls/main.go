@@ -19,10 +19,15 @@ func main() {
 	// Build proxy options from configuration
 	opts := []proxy.Option{
 		proxy.WithTLSMinVersion(cfg.TLSMinVersion),
+		proxy.WithProxyProtocol(cfg.ProxyProtocolEnabled),
 	}
 
 	if len(cfg.TLSCipherSuites) > 0 {
 		opts = append(opts, proxy.WithTLSCipherSuites(cfg.TLSCipherSuites))
+	}
+
+	if cfg.CopyIdleTimeout > 0 {
+		opts = append(opts, proxy.WithCopyIdleTimeout(cfg.CopyIdleTimeout))
 	}
 
 	s, err := proxy.New(cfg.SSHAddr, cfg.HTTPAddr, cfg.Port, cfg.CertFile, cfg.KeyFile, opts...)

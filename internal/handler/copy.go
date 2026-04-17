@@ -4,11 +4,14 @@ import (
 	"io"
 	"net"
 	"sync"
+	"time"
 )
 
 const (
 	// copyBufSize matches io.Copy's internal default to avoid under-utilising buffers.
 	copyBufSize = 32 * 1024
+	// defaultIdleTimeout is the maximum time to wait for data before closing idle connections.
+	defaultIdleTimeout = 5 * time.Minute
 )
 
 // copyBufPool reuses 32 KiB copy buffers across connections.
@@ -21,40 +24,89 @@ var copyBufPool = sync.Pool{
 	},
 }
 
-// BidirectionalCopy performs bidirectional copying between client and backend.
+// BidirectionalCopy performs bidirectional copying between client and backend
+// with support for TCP half-close and idle timeout.
 // It writes the initial protocol header to the backend, then pipes data in both
-// directions until either side closes the connection.
-func BidirectionalCopy(client, backend net.Conn, header []byte) error {
+// directions. When one direction finishes, it performs a half-close on the destination
+// connection to signal end-of-stream while still allowing the reverse direction to complete.
+func BidirectionalCopy(client, backend net.Conn, header []byte, idleTimeout time.Duration) error {
 	if _, err := backend.Write(header); err != nil {
 		return err
 	}
 
-	// Buffer size 2 prevents goroutine leak: both goroutines can send even if
-	// only one is received (we return as soon as either direction closes).
-	done := make(chan struct{}, 2)
+	// Use default timeout if not provided.
+	if idleTimeout <= 0 {
+		idleTimeout = defaultIdleTimeout
+	}
+
+	// Wait for both directions to complete.
+	var wg sync.WaitGroup
+	wg.Add(2)
 
 	buf1 := copyBufPool.Get().(*[]byte) //nolint:errcheck,forcetypeassert // pool stores only *[]byte
 	buf2 := copyBufPool.Get().(*[]byte) //nolint:errcheck,forcetypeassert // pool stores only *[]byte
 
 	// Client -> Backend
 	go func() {
+		defer wg.Done()
 		defer copyBufPool.Put(buf1)
 
-		_, _ = io.CopyBuffer(backend, client, *buf1)
+		_ = copyWithIdleTimeout(backend, client, *buf1, idleTimeout)
 
-		done <- struct{}{}
+		// Signal backend that client has finished writing (TCP half-close).
+		if tcpConn, ok := backend.(*net.TCPConn); ok {
+			_ = tcpConn.CloseWrite()
+		}
 	}()
 
 	// Backend -> Client
 	go func() {
+		defer wg.Done()
 		defer copyBufPool.Put(buf2)
 
-		_, _ = io.CopyBuffer(client, backend, *buf2)
+		_ = copyWithIdleTimeout(client, backend, *buf2, idleTimeout)
 
-		done <- struct{}{}
+		// Signal client that backend has finished writing (TCP half-close).
+		if tcpConn, ok := client.(*net.TCPConn); ok {
+			_ = tcpConn.CloseWrite()
+		}
 	}()
 
-	<-done
+	// Wait for both directions to complete.
+	wg.Wait()
 
 	return nil
+}
+
+// copyWithIdleTimeout copies data from src to dst with an idle timeout.
+// The connection deadline is updated before each read to prevent idle connections
+// from holding resources indefinitely.
+func copyWithIdleTimeout(dst io.Writer, src io.Reader, buf []byte, timeout time.Duration) error {
+	conn, ok := src.(net.Conn)
+	if !ok {
+		// Fallback to regular copy if source is not a net.Conn.
+		_, err := io.CopyBuffer(dst, src, buf)
+		return err
+	}
+
+	for {
+		// Set read deadline to detect idle connections.
+		if err := conn.SetReadDeadline(time.Now().Add(timeout)); err != nil {
+			return err
+		}
+
+		n, err := src.Read(buf)
+		if n > 0 {
+			if _, writeErr := dst.Write(buf[:n]); writeErr != nil {
+				return writeErr
+			}
+		}
+
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+	}
 }
